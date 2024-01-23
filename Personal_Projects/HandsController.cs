@@ -55,8 +55,6 @@ public class HandsController : MonoBehaviour
     float yRotation;
 
     private int _layerFinger;
-    private int _currentFingerCountLeft;
-    private int _currentFingerCountRight;
 
     private bool _canClap;
     private bool _isClapping;
@@ -73,8 +71,8 @@ public class HandsController : MonoBehaviour
     {
         _layerFinger = 6;
 
-        _currentFingerCountLeft = 5;
-        _currentFingerCountRight = 5;
+        _handLeft.StationedFingerCount = 5;
+        _handRight.StationedFingerCount = 5;
 
         // disable rigidbodies
         _handLeft.Index.RigidbodyFinger.interpolation = RigidbodyInterpolation.None;
@@ -124,17 +122,14 @@ public class HandsController : MonoBehaviour
 
 
 
-
     public void OnFingerHitSomething(Finger fingerThatHitSomething, Collision collision)
     {
         GameObject hitObject = collision.gameObject;     
         Vector3 impactVelocity = fingerThatHitSomething.RigidbodyFinger.velocity;
-
         // freeze the finger in place (maybe even parent it, only if it's shakeable ?)
         GameManager.Instance.PhysicsController.RigidbodySetVelocityZero(fingerThatHitSomething.RigidbodyFinger);
         GameManager.Instance.PhysicsController.RigidbodyBoolKinematic(fingerThatHitSomething.RigidbodyFinger, true);
         GameManager.Instance.PhysicsController.ColliderBool(fingerThatHitSomething.ColliderFinger, false);
-
         // impact and charging logic
         GameManager.Instance.MagnetismController.FingerHitTryCharge(fingerThatHitSomething, collision, hitObject, impactVelocity);
 
@@ -164,56 +159,28 @@ public class HandsController : MonoBehaviour
         GameManager.Instance.PhysicsController.RigidbodySetVelocityZero(objectThatGotHit.MyRigidbody);
         GameManager.Instance.PhysicsController.RigidbodySetAngularVelocityZero(objectThatGotHit.MyRigidbody);
     }
-    public void ShootLeft()
+    public void Shoot(Hand handThatShoots)
     {
-        if (GameManager.Instance.IsPaused == true)
+        if (GameManager.Instance.IsPaused == true || _isClapping == true)
         {
             return;
         }
 
-        if (_isClapping == false)
-        {
-            // get the targets position in world space
-            Vector3 targetPoint = GetTarget();
+        // get the targets position in world space
+        Vector3 targetPoint = GetTarget();
 
-            // rotate hand to look at target
-            _handLeft.LookAtTarget(targetPoint);
+        // rotate hand to look at target
+        handThatShoots.LookAtTarget(targetPoint);
 
-            // recoil
-            _handLeft.AnimateHandRecoil();
+        // recoil
+        handThatShoots.AnimateHandRecoil();
 
-            // animates the Palm, fingers accordingly
-            ShootCorrectFingerLeftWithAnimation(targetPoint);
+        // animates the Palm, fingers accordingly
+        ShootCorrectFingerWithAnimation(handThatShoots, targetPoint);
 
-            // enter the next animation for the next finger
-            StartCoroutine(EnterNextAnimationsRoutine(true));
-        }
+        // enter the next animation for the next finger
+        StartCoroutine(EnterNextAnimationsRoutine(handThatShoots));
     }
-    public void ShootRight()
-    {
-        if (GameManager.Instance.IsPaused == true)
-        {
-            return;
-        }
-
-        if (_isClapping == false)
-        {
-            // get the targets position in world space
-            Vector3 targetPoint = GetTarget();
-
-            // rotate hand to look at target
-            _handRight.LookAtTarget(targetPoint);
-
-            // recoil
-            _handRight.AnimateHandRecoil();
-
-            // animates the Palm, fingers accordingly
-            ShootCorrectFingerRightWithAnimation(targetPoint);
-
-            // enter the next animation for the next finger
-            StartCoroutine(EnterNextAnimationsRoutine(false));
-        }
-    } 
     public void ClapHands()
     {
         if (GameManager.Instance.IsPaused == true)
@@ -222,7 +189,7 @@ public class HandsController : MonoBehaviour
         }
 
         // possibly change the logic for when I can clap and magnetize...
-        if (_currentFingerCountLeft < 5 || _currentFingerCountRight < 5)
+        if (_handLeft.StationedFingerCount < 5 || _handRight.StationedFingerCount < 5)
         {
             _canClap = true;
         }
@@ -325,7 +292,7 @@ public class HandsController : MonoBehaviour
         // only execute below code if my _aimVector is not 0,0
         xRotation += _aimVector.y * Time.deltaTime * _sensitivityToUse;
         yRotation += _aimVector.x * Time.deltaTime * _sensitivityToUse;
-        xRotation = Mathf.Clamp(xRotation, -45f, 80f); // to stop the player from looking above/below 90
+        xRotation = Mathf.Clamp(xRotation, -45f, 80f); 
 
         _cameraPivotToMoveAim.localEulerAngles = new Vector3(xRotation, yRotation, 0);
 
@@ -346,150 +313,67 @@ public class HandsController : MonoBehaviour
             _sensitivityToUse = _sensMouse;
         }
     }
-    private void ShootCorrectFingerRightWithAnimation(Vector3 targetPoint)
+    private void ShootCorrectFingerWithAnimation(Hand handThatShoots, Vector3 targetPoint)
     {
-        switch (_currentFingerCountRight)
+        Finger fingerToShoot = null;
+
+        switch (handThatShoots.StationedFingerCount)
         {
             case 5:
                 // INDEX
-                // palm pose (dependant on fingercount)
-                _handRight.Palm.AnimatePalmCall(_handRight.Palm.AnimPoseIndexInstant);
-                // finger pose (dependant on fingercount)
-                _handRight.Index.AnimateFingerCall(_handRight.Index.AnimStretchedInstant);
-                _handRight.Middle.AnimateFingerCall(_handRight.Middle.AnimPoseIndexInstant);
-                _handRight.Ring.AnimateFingerCall(_handRight.Ring.AnimPoseIndexInstant);
-                _handRight.Pink.AnimateFingerCall(_handRight.Pink.AnimPoseIndexInstant);
-                _handRight.Thumb.AnimateFingerCall(_handRight.Thumb.AnimPoseIndexInstant);
-                // disconnect finger (dependant on fingercount)
-                _handRight.Index.DisconnectFinger();
-                // shoot finger (dependant on fingercount)
-                ShootFinger(_handRight.Index, targetPoint);
-
-                _currentFingerCountRight -= 1;
+                fingerToShoot = handThatShoots.Index;
+                // palm pose 
+                handThatShoots.Palm.AnimatePalmCall(handThatShoots.Palm.AnimPoseIndexInstant);
+                // finger pose 
+                handThatShoots.Index.AnimateFingerCall(handThatShoots.Index.AnimStretchedInstant);
+                handThatShoots.Middle.AnimateFingerCall(handThatShoots.Middle.AnimPoseIndexInstant);
+                handThatShoots.Ring.AnimateFingerCall(handThatShoots.Ring.AnimPoseIndexInstant);
+                handThatShoots.Pink.AnimateFingerCall(handThatShoots.Pink.AnimPoseIndexInstant);
+                handThatShoots.Thumb.AnimateFingerCall(handThatShoots.Thumb.AnimPoseIndexInstant);
 
                 break;
             case 4:
                 // MIDDLE
-                // palm pose (dependant on fingercount)
-                _handRight.Palm.AnimatePalmCall(_handRight.Palm.AnimPoseMiddleInstant);
-                // finger pose (dependant on fingercount)
-                _handRight.Middle.AnimateFingerCall(_handRight.Middle.AnimStretchedInstant);
-                _handRight.Ring.AnimateFingerCall(_handRight.Ring.AnimPoseMiddleInstant);
-                _handRight.Pink.AnimateFingerCall(_handRight.Pink.AnimPoseMiddleInstant);
-                _handRight.Thumb.AnimateFingerCall(_handRight.Thumb.AnimPoseMiddleInstant);
-                // disconnect finger (dependant on fingercount)
-                _handRight.Middle.DisconnectFinger();
-                // shoot finger (dependant on fingercount)
-                ShootFinger(_handRight.Middle, targetPoint);
+                fingerToShoot = handThatShoots.Middle;
+                // palm pose 
+                handThatShoots.Palm.AnimatePalmCall(handThatShoots.Palm.AnimPoseMiddleInstant);
+                // finger pose 
+                handThatShoots.Middle.AnimateFingerCall(handThatShoots.Middle.AnimStretchedInstant);
+                handThatShoots.Ring.AnimateFingerCall(handThatShoots.Ring.AnimPoseMiddleInstant);
+                handThatShoots.Pink.AnimateFingerCall(handThatShoots.Pink.AnimPoseMiddleInstant);
+                handThatShoots.Thumb.AnimateFingerCall(handThatShoots.Thumb.AnimPoseMiddleInstant);
 
-                _currentFingerCountRight -= 1;
                 break;
             case 3:
                 // RING
-                // palm pose (dependant on fingercount)
-                _handRight.Palm.AnimatePalmCall(_handRight.Palm.AnimPoseRingInstant);
-                // finger pose (dependant on fingercount)
-                _handRight.Ring.AnimateFingerCall(_handRight.Ring.AnimStretchedInstant);
-                _handRight.Pink.AnimateFingerCall(_handRight.Pink.AnimPoseRingInstant);
-                _handRight.Thumb.AnimateFingerCall(_handRight.Thumb.AnimPoseRingInstant);
-                // disconnect finger (dependant on fingercount)
-                _handRight.Ring.DisconnectFinger();
-                // shoot finger (dependant on fingercount)
-                ShootFinger(_handRight.Ring, targetPoint);
+                fingerToShoot = handThatShoots.Ring;
+                // palm pose 
+                handThatShoots.Palm.AnimatePalmCall(handThatShoots.Palm.AnimPoseRingInstant);
+                // finger pose 
+                handThatShoots.Ring.AnimateFingerCall(handThatShoots.Ring.AnimStretchedInstant);
+                handThatShoots.Pink.AnimateFingerCall(handThatShoots.Pink.AnimPoseRingInstant);
+                handThatShoots.Thumb.AnimateFingerCall(handThatShoots.Thumb.AnimPoseRingInstant);
 
-                _currentFingerCountRight -= 1;
                 break;
             case 2:
                 // PINK
-                // palm pose (dependant on fingercount)
-                _handRight.Palm.AnimatePalmCall(_handRight.Palm.AnimPosePinkInstant);
-                // finger pose (dependant on fingercount)
-                _handRight.Pink.AnimateFingerCall(_handRight.Pink.AnimStretchedInstant);
-                _handRight.Thumb.AnimateFingerCall(_handRight.Thumb.AnimPosePinkInstant);
-                // disconnect finger (dependant on fingercount)
-                _handRight.Pink.DisconnectFinger();
-                // shoot finger (dependant on fingercount)
-                ShootFinger(_handRight.Pink, targetPoint);
+                fingerToShoot = handThatShoots.Pink;
+                // palm pose 
+                handThatShoots.Palm.AnimatePalmCall(handThatShoots.Palm.AnimPosePinkInstant);
+                // finger pose 
+                handThatShoots.Pink.AnimateFingerCall(handThatShoots.Pink.AnimStretchedInstant);
+                handThatShoots.Thumb.AnimateFingerCall(handThatShoots.Thumb.AnimPosePinkInstant);
 
-                _currentFingerCountRight -= 1;
                 break;
             case 1:
-                // nothhings left :(
-                Debug.Log("Nothings left :(");
-                break;
+
+                return;
         }
-    }
-    private void ShootCorrectFingerLeftWithAnimation(Vector3 targetPoint)
-    {
-        switch (_currentFingerCountLeft)
-        {
-            case 5:
-                // INDEX
-                // palm pose (dependant on fingercount)
-                _handLeft.Palm.AnimatePalmCall(_handLeft.Palm.AnimPoseIndexInstant);
-                // finger pose (dependant on fingercount)
-                _handLeft.Index.AnimateFingerCall(_handLeft.Index.AnimStretchedInstant);
-                _handLeft.Middle.AnimateFingerCall(_handLeft.Middle.AnimPoseIndexInstant);
-                _handLeft.Ring.AnimateFingerCall(_handLeft.Ring.AnimPoseIndexInstant);
-                _handLeft.Pink.AnimateFingerCall(_handLeft.Pink.AnimPoseIndexInstant);
-                _handLeft.Thumb.AnimateFingerCall(_handLeft.Thumb.AnimPoseIndexInstant);
-                // disconnect finger (dependant on fingercount)
-                _handLeft.Index.DisconnectFinger();
-                // shoot finger (dependant on fingercount)
-                ShootFinger(_handLeft.Index, targetPoint);
 
-                _currentFingerCountLeft -= 1;
-                break;
-            case 4:
-                // MIDDLE
-                // palm pose (dependant on fingercount)
-                _handLeft.Palm.AnimatePalmCall(_handLeft.Palm.AnimPoseMiddleInstant);
-                // finger pose (dependant on fingercount)
-                _handLeft.Middle.AnimateFingerCall(_handLeft.Middle.AnimStretchedInstant);
-                _handLeft.Ring.AnimateFingerCall(_handLeft.Ring.AnimPoseMiddleInstant);
-                _handLeft.Pink.AnimateFingerCall(_handLeft.Pink.AnimPoseMiddleInstant);
-                _handLeft.Thumb.AnimateFingerCall(_handLeft.Thumb.AnimPoseMiddleInstant);
-                // disconnect finger (dependant on fingercount)
-                _handLeft.Middle.DisconnectFinger();
-                // shoot finger (dependant on fingercount)
-                ShootFinger(_handLeft.Middle, targetPoint);
-
-                _currentFingerCountLeft -= 1;
-                break;
-            case 3:
-                // RING
-                // palm pose (dependant on fingercount)
-                _handLeft.Palm.AnimatePalmCall(_handLeft.Palm.AnimPoseRingInstant);
-                // finger pose (dependant on fingercount)
-                _handLeft.Ring.AnimateFingerCall(_handLeft.Ring.AnimStretchedInstant);
-                _handLeft.Pink.AnimateFingerCall(_handLeft.Pink.AnimPoseRingInstant);
-                _handLeft.Thumb.AnimateFingerCall(_handLeft.Thumb.AnimPoseRingInstant);
-                // disconnect finger (dependant on fingercount)
-                _handLeft.Ring.DisconnectFinger();
-                // shoot finger (dependant on fingercount)
-                ShootFinger(_handLeft.Ring, targetPoint);
-
-                _currentFingerCountLeft -= 1;
-                break;
-            case 2:
-                // PINK
-                // palm pose (dependant on fingercount)
-                _handLeft.Palm.AnimatePalmCall(_handLeft.Palm.AnimPosePinkInstant);
-                // finger pose (dependant on fingercount)
-                _handLeft.Pink.AnimateFingerCall(_handLeft.Pink.AnimStretchedInstant);
-                _handLeft.Thumb.AnimateFingerCall(_handLeft.Thumb.AnimPosePinkInstant);
-                // disconnect finger (dependant on fingercount)
-                _handLeft.Pink.DisconnectFinger();
-                // shoot finger (dependant on fingercount)
-                ShootFinger(_handLeft.Pink, targetPoint);
-
-                _currentFingerCountLeft -= 1;
-                break;
-            case 1:
-                // nothings left :(
-                Debug.Log("Nothings left :(");
-                break;
-        }
+        // disconnect finger and shoot finger
+        fingerToShoot.DisconnectFinger();
+        ShootFinger(fingerToShoot, targetPoint);
+        handThatShoots.StationedFingerCount -= 1;    
     }
     private void ShootFinger(Finger finger, Vector3 targetPoint)
     {
@@ -556,11 +440,11 @@ public class HandsController : MonoBehaviour
 
         if (fingerToReplenish.Hand.TypeHand == HandType.Left)
         {
-            _currentFingerCountLeft += 1;
+            _handLeft.StationedFingerCount += 1;
         }
         else
         {
-            _currentFingerCountRight += 1;
+            _handRight.StationedFingerCount += 1;
         }
     }
     private IEnumerator ReturnFingersAndResetHandsRoutine()
@@ -571,7 +455,7 @@ public class HandsController : MonoBehaviour
             FingersToReturn.Add(ShotFingers[i]);
         }
 
-        yield return new WaitForSeconds(_timeToReachClap); // this time should be equal to the time between the animation(clap) starting and clap happening (was 1)
+        yield return new WaitForSeconds(_timeToReachClap); 
 
         // return fingers 1 by 1
         while (FingersToReturn.Count > 0)
@@ -580,7 +464,7 @@ public class HandsController : MonoBehaviour
             FingersToReturn.Remove(FingersToReturn[FingersToReturn.Count - 1]);
 
             // have wait time between each finger
-            yield return new WaitForSeconds(_fingerIntervalTime);   // THIS IN RETURN TIME ARE CURRENTLY CAUSING ERRORS           
+            yield return new WaitForSeconds(_fingerIntervalTime);          
         }
 
         float returnTimeFingers = FingerReturnTime + 0.1f;
@@ -589,117 +473,49 @@ public class HandsController : MonoBehaviour
         // have all fingers and palms enter idle again
         ResetHandsAndFingersToIdle();
 
-        yield return new WaitForSeconds(1);  // ... needs reason (was 1)
+        yield return new WaitForSeconds(1);  
 
-        // reset _isClapping
         _isClapping = false;
     }
-    private IEnumerator EnterNextAnimationsRoutine(bool isLeft)
+    private IEnumerator EnterNextAnimationsRoutine(Hand handThatShot)
     {
         yield return new WaitForSeconds(0.15f);
 
-        if (isLeft == true)
+        switch (handThatShot.StationedFingerCount)
         {
-            switch (_currentFingerCountLeft)
-            {
-                case 4:
-                    // animate into middle pose 
+            case 4:
+                handThatShot.Palm.AnimatePalmCall(handThatShot.Palm.AnimPoseMiddle);
 
-                    _handLeft.Palm.AnimatePalmCall(_handLeft.Palm.AnimPoseMiddle);
-                    // finger pose (dependant on fingercount)
-                    _handLeft.Middle.AnimateFingerTrigger(_handLeft.Middle.TriggerStretch);
+                handThatShot.Middle.AnimateFingerTrigger(handThatShot.Middle.TriggerStretch);
+                handThatShot.Ring.AnimateFingerCall(handThatShot.Ring.AnimPoseMiddle);
+                handThatShot.Pink.AnimateFingerCall(handThatShot.Pink.AnimPoseMiddle);
+                handThatShot.Thumb.AnimateFingerCall(handThatShot.Thumb.AnimPoseMiddle); 
+                break;
+            case 3:
+                handThatShot.Palm.AnimatePalmCall(handThatShot.Palm.AnimPoseRing);
 
-                    _handLeft.Ring.AnimateFingerCall(_handLeft.Ring.AnimPoseMiddle);
-                    _handLeft.Pink.AnimateFingerCall(_handLeft.Pink.AnimPoseMiddle);
-                    _handLeft.Thumb.AnimateFingerCall(_handLeft.Thumb.AnimPoseMiddle); 
-                    break;
-                case 3:
-                    // animate into ring pose 
+                handThatShot.Ring.AnimateFingerTrigger(handThatShot.Ring.TriggerStretch);
+                handThatShot.Pink.AnimateFingerCall(handThatShot.Pink.AnimPoseRing);
+                handThatShot.Thumb.AnimateFingerCall(handThatShot.Thumb.AnimPoseRing);
+                break;
+            case 2:
+                handThatShot.Palm.AnimatePalmCall(handThatShot.Palm.AnimPosePink);
 
-                    // palm pose (dependant on fingercount)
-                    _handLeft.Palm.AnimatePalmCall(_handLeft.Palm.AnimPoseRing);
-                    // finger pose (dependant on fingercount)
-                    _handLeft.Ring.AnimateFingerTrigger(_handLeft.Ring.TriggerStretch);
+                handThatShot.Pink.AnimateFingerTrigger(handThatShot.Pink.TriggerStretch);
+                handThatShot.Thumb.AnimateFingerCall(handThatShot.Thumb.AnimPosePink);
+                break;
+            case 1:
+                handThatShot.Palm.AnimatePalmTrigger(handThatShot.Palm.TriggerIdle);
 
-                    _handLeft.Pink.AnimateFingerCall(_handLeft.Pink.AnimPoseRing);
-                    _handLeft.Thumb.AnimateFingerCall(_handLeft.Thumb.AnimPoseRing);
-                    break;
-                case 2:
-                    // animate into pink pose 
+                handThatShot.Thumb.AnimateFingerTrigger(handThatShot.Thumb.TriggerIdle);
 
-                    // palm pose (dependant on fingercount)
-                    _handLeft.Palm.AnimatePalmCall(_handLeft.Palm.AnimPosePink);
-                    // finger pose (dependant on fingercount)
-                    _handLeft.Pink.AnimateFingerTrigger(_handLeft.Pink.TriggerStretch);
+                // reset the transform that was previously looking at the target due to LookAt
+                StartCoroutine(ResetHandRotationRoutine(handThatShot));
+                break;
+            default:
 
-                    _handLeft.Thumb.AnimateFingerCall(_handLeft.Thumb.AnimPosePink);
-                    break;
-                case 1:
-                    // enter idle animation again
-                    _handLeft.Palm.AnimatePalmTrigger(_handLeft.Palm.TriggerIdle);
-
-                    _handLeft.Thumb.AnimateFingerTrigger(_handLeft.Thumb.TriggerIdle);
-
-                    // reset the transform that was previously looking at the target due to LookAt
-                    StartCoroutine(ResetHandRotationRoutine(_handLeft));
-
-                    break;
-                default:
-                    //Debug.Log("nothings left");
-                    break;
-            }
-        }
-        else
-        {
-            switch (_currentFingerCountRight)
-            {
-                case 4:
-                    // animate into middle pose 
-
-                    _handRight.Palm.AnimatePalmCall(_handRight.Palm.AnimPoseMiddle);
-                    // finger pose (dependant on fingercount)
-                    _handRight.Middle.AnimateFingerTrigger(_handRight.Middle.TriggerStretch);
-
-                    _handRight.Ring.AnimateFingerCall(_handRight.Ring.AnimPoseMiddle);
-                    _handRight.Pink.AnimateFingerCall(_handRight.Pink.AnimPoseMiddle);
-                    _handRight.Thumb.AnimateFingerCall(_handRight.Thumb.AnimPoseMiddle);
-                    break;
-                case 3:
-                    // animate into ring pose 
-
-                    // palm pose (dependant on fingercount)
-                    _handRight.Palm.AnimatePalmCall(_handRight.Palm.AnimPoseRing);
-                    // finger pose (dependant on fingercount)
-                    _handRight.Ring.AnimateFingerTrigger(_handRight.Ring.TriggerStretch);
-
-                    _handRight.Pink.AnimateFingerCall(_handRight.Pink.AnimPoseRing);
-                    _handRight.Thumb.AnimateFingerCall(_handRight.Thumb.AnimPoseRing);
-                    break;
-                case 2:
-                    // animate into pink pose 
-
-                    // palm pose (dependant on fingercount)
-                    _handRight.Palm.AnimatePalmCall(_handRight.Palm.AnimPosePink);
-                    // finger pose (dependant on fingercount)
-                    _handRight.Pink.AnimateFingerTrigger(_handRight.Pink.TriggerStretch);
-
-                    _handRight.Thumb.AnimateFingerCall(_handRight.Thumb.AnimPosePink);
-                    break;
-                case 1:
-                    // enter idle animation again
-                    _handRight.Palm.AnimatePalmTrigger(_handRight.Palm.TriggerIdle);
-
-                    _handRight.Thumb.AnimateFingerTrigger(_handRight.Thumb.TriggerIdle);
-
-                    // reset the transform that was previously looking at the target due to LookAt
-                    StartCoroutine(ResetHandRotationRoutine(_handRight));
-
-                    break;
-                default:
-                    Debug.Log("nothings left");
-                    break;
-            }
-        }
+                break;
+        }      
     }
     private IEnumerator ResetHandRotationRoutine(Hand handToReset, bool instant = false)
     {
@@ -719,7 +535,7 @@ public class HandsController : MonoBehaviour
         }
 
 
-        // keep rotating untill target is reached
+        // keep rotating until target is reached
         if (instant == false)
         {
             while (reachedTarget == false)
@@ -742,4 +558,5 @@ public class HandsController : MonoBehaviour
             handToReset.RotationRoot.transform.localRotation = toRotation;
         }
     }
+
 }
